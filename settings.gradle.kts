@@ -13,5 +13,8 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "multiplatform-library-template"
-include(":library")
+rootProject.name = "app-starter-pack"
+include(":networking")
+include(":persistence")
+include(":analytics")
+include(":util")
