@@ -1,4 +1,4 @@
-name: iOS Build
+name: iOS Compile
 
 on:
   pull_request:
