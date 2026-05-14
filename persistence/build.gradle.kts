@@ -10,6 +10,9 @@ version = "1.0.0"
 
 kotlin {
     jvmToolchain(21)
+    compilerOptions {
+        freeCompilerArgs.add("-Xexpect-actual-classes")
+    }
     jvm()
     androidLibrary {
         namespace = "io.appstarterpack.persistence"
