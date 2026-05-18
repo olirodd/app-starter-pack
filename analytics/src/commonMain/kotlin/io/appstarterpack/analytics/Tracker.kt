@@ -16,7 +16,7 @@ class Tracker(
         clients.forEach { it.identify(user) }
     }
 
-    fun report(throwable: Throwable, metadata: Map<String, String> = emptyMap()) {
-        reporters.forEach { it.report(throwable, metadata) }
+    fun report(throwable: Throwable) {
+        reporters.forEach { it.report(throwable) }
     }
 }

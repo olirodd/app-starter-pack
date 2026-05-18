@@ -15,11 +15,7 @@ class TrackerTest {
 
     private class RecordingErrorReporter : ErrorReporter {
         val errors = mutableListOf<Throwable>()
-        val metadataList = mutableListOf<Map<String, String>>()
-        override fun report(throwable: Throwable, metadata: Map<String, String>) {
-            errors += throwable
-            metadataList += metadata
-        }
+        override fun report(throwable: Throwable) { errors += throwable }
     }
 
     // --- Fan-out ---
@@ -61,19 +57,6 @@ class TrackerTest {
 
         assertEquals(listOf<Throwable>(error), a.errors)
         assertEquals(listOf<Throwable>(error), b.errors)
-    }
-
-    @Test
-    fun `report passes metadata to all reporters`() {
-        val a = RecordingErrorReporter()
-        val b = RecordingErrorReporter()
-        val tracker = Tracker(clients = emptyList(), reporters = listOf(a, b))
-        val metadata = mapOf("endpoint" to "categories", "status_code" to "500")
-
-        tracker.report(RuntimeException("error"), metadata)
-
-        assertEquals(listOf(metadata), a.metadataList)
-        assertEquals(listOf(metadata), b.metadataList)
     }
 
     // --- Consent ---
