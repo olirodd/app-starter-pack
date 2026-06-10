@@ -45,6 +45,7 @@ internal class KtorHttpClient(
             }
 
             if (!response.status.isSuccess()) {
+                if (response.status.value == 401) config.onUnauthorized?.invoke()
                 throw NetworkError.HttpError(response.status.value)
             }
 

@@ -129,6 +129,37 @@ class KtorHttpClientTest {
     }
 
     @Test
+    fun `HTTP 401 invokes onUnauthorized callback before throwing`() = runTest {
+        var unauthorizedCalls = 0
+        assertFailsWith<NetworkError.HttpError> {
+            mockClient(
+                statusCode = HttpStatusCode.Unauthorized,
+                config = HttpClientConfig(
+                    baseUrl = "https://api.test.com",
+                    onUnauthorized = { unauthorizedCalls++ }
+                )
+            ).send(testRequest())
+        }
+        assertEquals(1, unauthorizedCalls)
+    }
+
+    @Test
+    fun `non-401 errors do not invoke onUnauthorized callback`() = runTest {
+        var unauthorizedCalls = 0
+        val config = HttpClientConfig(
+            baseUrl = "https://api.test.com",
+            onUnauthorized = { unauthorizedCalls++ }
+        )
+        assertFailsWith<NetworkError.HttpError> {
+            mockClient(statusCode = HttpStatusCode.Forbidden, config = config).send(testRequest())
+        }
+        assertFailsWith<NetworkError.HttpError> {
+            mockClient(statusCode = HttpStatusCode.InternalServerError, config = config).send(testRequest())
+        }
+        assertEquals(0, unauthorizedCalls)
+    }
+
+    @Test
     fun `HTTP 500 throws NetworkError HttpError with status 500`() = runTest {
         val error = assertFailsWith<NetworkError.HttpError> {
             mockClient(statusCode = HttpStatusCode.InternalServerError).send(testRequest())
