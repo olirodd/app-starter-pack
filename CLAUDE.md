@@ -24,6 +24,7 @@ Every module targets: `androidLibrary`, `iosArm64`, `iosSimulatorArm64`, `jvm` (
 - **`HttpClientConfig.tokenProvider: (() -> String?)?`** — auth token injection via lambda. The HTTP client never imports auth state; callers wire the lambda at construction time.
 - **`KtorHttpClient` is `internal`** — consumers use the `HttpClient` interface and the `createHttpClient(config)` expect/actual factory function.
 - **`NetworkError` seals over HTTP-level errors only** — domain layers map these to user-facing errors.
+- **A request body is JSON or multipart, never both.** `RequestDefinition.bodyJson` sends `application/json`; `RequestDefinition.multipartBody` (`MultipartBody`: `TextPart`s plus `FilePart`s with bytes, filename and content type) sends `multipart/form-data` for uploads. `KtorHttpClient` refuses a request that sets both with an `IllegalArgumentException`, raised before the request is sent and never wrapped as a `NetworkError`, because it is a programmer error. Don't set a `Content-Type` header for multipart: the content carries its own, boundary included.
 - **`Tracker` is not a singleton** — it is DI-injected and takes `List<AnalyticsClient>` + `List<ErrorReporter>` for fan-out. Firebase implementations live in app layers, not here.
 
 ## Running tests

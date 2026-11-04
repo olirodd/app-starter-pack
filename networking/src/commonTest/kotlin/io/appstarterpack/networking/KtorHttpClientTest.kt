@@ -2,6 +2,7 @@ package io.appstarterpack.networking
 
 import io.ktor.client.engine.mock.MockEngine
 import io.ktor.client.engine.mock.respond
+import io.ktor.client.engine.mock.toByteArray
 import io.ktor.client.request.HttpRequestData
 import io.ktor.http.Headers
 import io.ktor.http.HttpMethod as KtorHttpMethod
@@ -18,6 +19,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
+import kotlin.test.assertTrue
 
 class KtorHttpClientTest {
 
@@ -290,7 +292,87 @@ class KtorHttpClientTest {
         assertEquals(emptyMap(), minimalRequest.headers)
         assertEquals(emptyMap(), minimalRequest.queryParameters)
         assertNull(minimalRequest.bodyJson)
+        assertNull(minimalRequest.multipartBody)
         mockClient().send(minimalRequest)
+    }
+
+    // --- Multipart bodies ---
+
+    /** What a multipart request put on the wire, read inside the engine (the body is a stream, so the read is suspend). */
+    private class Captured(val contentType: String?, val body: String, val bytes: ByteArray, val headers: Headers)
+
+    private fun multipartClient(
+        onRequest: (Captured) -> Unit,
+        config: HttpClientConfig = HttpClientConfig(baseUrl = "https://api.test.com")
+    ): KtorHttpClient = KtorHttpClient(config, MockEngine { request ->
+        val bytes = request.body.toByteArray()
+        onRequest(Captured(request.body.contentType?.toString(), bytes.decodeToString(), bytes, request.headers))
+        respond(ByteReadChannel("""{"id":1,"name":"test"}"""), HttpStatusCode.OK, headersOf("Content-Type", "application/json"))
+    })
+
+    private fun multipartRequest(body: MultipartBody, bodyJson: String? = null) = object : RequestDefinition<TestResponse> {
+        override val path = "/upload"
+        override val method = HttpMethod.POST
+        override val bodyJson = bodyJson
+        override val multipartBody = body
+        override val responseSerializer = serializer<TestResponse>()
+    }
+
+    private val cover = byteArrayOf(0x89.toByte(), 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A) // a PNG signature
+
+    @Test
+    fun `multipart request sends text and file parts as multipart form data`() = runTest {
+        var captured: Captured? = null
+        multipartClient({ captured = it }).send(multipartRequest(MultipartBody(listOf(
+            MultipartBody.TextPart("title", "Antonblast"),
+            MultipartBody.TextPart("description", "A game"),
+            MultipartBody.FilePart("cover", cover, filename = "cover.png", contentType = "image/png"),
+        ))))
+
+        val c = assertNotNull(captured)
+        assertTrue(c.contentType!!.startsWith("multipart/form-data; boundary="), c.contentType)
+        // Text parts: name and value.
+        assertTrue(c.body.contains("Content-Disposition: form-data; name=title"), c.body)
+        assertTrue(c.body.contains("Antonblast"), c.body)
+        assertTrue(c.body.contains("Content-Disposition: form-data; name=description"), c.body)
+        // File part: field name, filename and content type, and the bytes themselves.
+        assertTrue(c.body.contains("name=cover"), c.body)
+        assertTrue(c.body.contains("filename=\"cover.png\""), c.body)
+        assertTrue(c.body.contains("Content-Type: image/png"), c.body)
+        assertTrue(c.bytes.toList().windowed(cover.size).any { it == cover.toList() }, "file bytes missing from the body")
+    }
+
+    @Test
+    fun `multipart request still carries the auth token`() = runTest {
+        var captured: Captured? = null
+        multipartClient(
+            { captured = it },
+            HttpClientConfig(baseUrl = "https://api.test.com", tokenProvider = { "test-token-123" })
+        ).send(multipartRequest(MultipartBody(listOf(MultipartBody.TextPart("title", "x")))))
+
+        assertEquals("test-token-123", assertNotNull(captured).headers["X-AUTH-TOKEN"])
+    }
+
+    @Test
+    fun `a JSON request is still sent as JSON`() = runTest {
+        var contentType: String? = null
+        KtorHttpClient(HttpClientConfig(baseUrl = "https://api.test.com"), MockEngine { request ->
+            contentType = request.body.contentType?.toString()
+            respond(ByteReadChannel("""{"id":1,"name":"test"}"""), HttpStatusCode.OK, headersOf("Content-Type", "application/json"))
+        }).send(testRequest(method = HttpMethod.POST, bodyJson = """{"name":"test"}"""))
+
+        assertEquals("application/json", contentType)
+    }
+
+    @Test
+    fun `a request with both a JSON and a multipart body is refused before anything is sent`() = runTest {
+        var sent = false
+        val client = multipartClient({ sent = true })
+
+        assertFailsWith<IllegalArgumentException> {
+            client.send(multipartRequest(MultipartBody(listOf(MultipartBody.TextPart("title", "x"))), bodyJson = "{}"))
+        }
+        assertEquals(false, sent)
     }
 
     // --- Factory and lifecycle ---
